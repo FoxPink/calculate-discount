@@ -129,38 +129,63 @@ function App() {
     setDropdownOpen(false)
   }
 
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY_1
+  const GEMINI_API_KEYS = Object.keys(import.meta.env)
+    .filter(key => key.startsWith('VITE_GEMINI_API_KEY_'))
+    .sort((a, b) => {
+      const numA = parseInt(a.split('_').pop(), 10)
+      const numB = parseInt(b.split('_').pop(), 10)
+      return numA - numB
+    })
+    .map(key => import.meta.env[key])
+    .filter(val => val && val.trim() !== '')
+
+  const [currentKeyIndex, setCurrentKeyIndex] = useState(() => {
+    const saved = localStorage.getItem('gemini_key_index')
+    return saved ? parseInt(saved, 10) : 0
+  })
+
+  useEffect(() => {
+    localStorage.setItem('gemini_key_index', currentKeyIndex.toString())
+  }, [currentKeyIndex])
 
   const parseTableWithGemini = async (imageFile) => {
-    if (!GEMINI_API_KEY) {
+    if (GEMINI_API_KEYS.length === 0) {
       alert('Chưa cấu hình API Key trong file .env!')
       return []
     }
 
-    try {
-      // Convert image to base64
-      const reader = new FileReader()
-      const base64Promise = new Promise((resolve) => {
-        reader.onloadend = () => {
-          const base64 = reader.result.split(',')[1]
-          resolve(base64)
-        }
-        reader.readAsDataURL(imageFile)
-      })
-      const base64Image = await base64Promise
+    // Convert image to base64
+    const reader = new FileReader()
+    const base64Promise = new Promise((resolve) => {
+      reader.onloadend = () => {
+        const base64 = reader.result.split(',')[1]
+        resolve(base64)
+      }
+      reader.readAsDataURL(imageFile)
+    })
+    const base64Image = await base64Promise
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                {
-                  text: `Phân tích bảng trong ảnh này:
+    // Thử bắt đầu từ Key hiện tại đang lưu
+    let attemptCount = 0
+    let index = currentKeyIndex % GEMINI_API_KEYS.length
+
+    while (attemptCount < GEMINI_API_KEYS.length) {
+      const currentKey = GEMINI_API_KEYS[index]
+      console.log(`Đang thử API Key thứ ${index + 1}...`)
+
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${currentKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  {
+                    text: `Phân tích bảng trong ảnh này:
 1. BỎ QUA dòng tiêu đề (header) có chữ "Số lượng", "Đơn giá", "Tổng tiền CK"
 2. CHỈ lấy các dòng dữ liệu sản phẩm (có STT 1, 2, 3, 4, 5...)
 3. Với mỗi dòng sản phẩm, trích xuất:
@@ -171,37 +196,51 @@ function App() {
 Trả về JSON array format: [{"qty": number, "price": number, "discount": number}]
 
 CHỈ trả về JSON, KHÔNG giải thích gì thêm.`
-                },
-                {
-                  inline_data: {
-                    mime_type: imageFile.type,
-                    data: base64Image
+                  },
+                  {
+                    inline_data: {
+                      mime_type: imageFile.type,
+                      data: base64Image
+                    }
                   }
-                }
-              ]
-            }]
-          })
-        }
-      )
+                ]
+              }]
+            })
+          }
+        )
 
-      const result = await response.json()
-      console.log('Gemini Response:', result)
-      
-      if (result.error) {
-        console.error('Gemini API Error:', result.error)
-        throw new Error(result.error.message || 'API Error')
+        const result = await response.json()
+
+        // Nếu gặp lỗi 429 (Hết hạn mức) hoặc lỗi API Key, chuyển sang Key tiếp theo
+        if (response.status === 429 || (result.error && (result.error.code === 429 || result.error.status === 'RESOURCE_EXHAUSTED'))) {
+          console.warn(`API Key thứ ${index + 1} hết hạn mức (429). Đang chuyển sang Key tiếp theo...`)
+          index = (index + 1) % GEMINI_API_KEYS.length
+          setCurrentKeyIndex(index) // Lưu lại vị trí Key mới
+          attemptCount++
+          continue 
+        }
+
+        if (result.error) {
+          console.error(`API Key thứ ${index + 1} gặp lỗi:`, result.error.message)
+          throw new Error(result.error.message)
+        }
+
+        if (result.candidates && result.candidates[0]) {
+          const text = result.candidates[0].content.parts[0].text
+          return parseGeminiResponse(text)
+        }
+        
+        break // Thành công thì thoát vòng lặp
+      } catch (error) {
+        console.error(`Lỗi tại Key thứ ${index + 1}:`, error)
+        // Nếu lỗi không phải do hạn mức thì cũng thử Key tiếp theo
+        index = (index + 1) % GEMINI_API_KEYS.length
+        setCurrentKeyIndex(index)
+        attemptCount++
+        if (attemptCount >= GEMINI_API_KEYS.length) throw error
       }
-      
-      if (result.candidates && result.candidates[0]) {
-        const text = result.candidates[0].content.parts[0].text
-        return parseGeminiResponse(text)
-      }
-      
-      return []
-    } catch (error) {
-      console.error('Gemini Error:', error)
-      throw error
     }
+    return []
   }
 
   const parseGeminiResponse = (text) => {
