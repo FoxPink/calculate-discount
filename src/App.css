@@ -1473,6 +1473,18 @@ h1 {
   color: var(--text-dark);
 }
 
+.input-wrapper-with-clear input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 1);
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.2);
+}
+
+.dark-mode .input-wrapper-with-clear input:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent);
+}
+
 .math-operator {
   display: flex;
   align-items: center;
