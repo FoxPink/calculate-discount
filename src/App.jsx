@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import puter from '@heyputer/puter.js'
 import './App.css'
 
 function App() {
   const [image, setImage] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadingText, setLoadingText] = useState('')
   const [results, setResults] = useState([])
   const [history, setHistory] = useState(() => {
     const saved = localStorage.getItem('calc_history')
@@ -129,124 +131,55 @@ function App() {
     setDropdownOpen(false)
   }
 
-  const GEMINI_API_KEYS = Object.keys(import.meta.env)
-    .filter(key => key.startsWith('VITE_GEMINI_API_KEY_'))
-    .sort((a, b) => {
-      const numA = parseInt(a.split('_').pop(), 10)
-      const numB = parseInt(b.split('_').pop(), 10)
-      return numA - numB
-    })
-    .map(key => import.meta.env[key])
-    .filter(val => val && val.trim() !== '')
+  const parseTableWithAI = async (imageFile) => {
+    try {
+      console.log(`[${new Date().toLocaleTimeString()}] >>> BẮT ĐẦU SỬ DỤNG PUTER AI`);
+      setLoadingText('Đang trích xuất văn bản từ ảnh...');
+      
+      // Bước 1: OCR bằng Puter
+      const ocrText = await puter.ai.img2txt(imageFile);
+      if (!ocrText) throw new Error('Không thể trích xuất văn bản từ ảnh.');
+      
+      console.log("Puter OCR Raw Text:", ocrText);
+      setLoadingText('Đang phân tích và định dạng bảng...');
 
-  const [currentKeyIndex, setCurrentKeyIndex] = useState(() => {
-    const saved = localStorage.getItem('gemini_key_index')
-    return saved ? parseInt(saved, 10) : 0
-  })
+      // Bước 2: Định dạng bằng Puter Chat
+      const puterFormat = await puter.ai.chat(
+        `Nhiệm vụ: Trích xuất TẤT CẢ các dòng dữ liệu từ văn bản OCR của bảng hóa đơn.
+Bảng có 3 cột chính: Số lượng, Đơn giá, Tổng tiền CK.
 
-  useEffect(() => {
-    localStorage.setItem('gemini_key_index', currentKeyIndex.toString())
-  }, [currentKeyIndex])
+YÊU CẦU QUAN TRỌNG:
+1. TRÍCH XUẤT ĐẦY ĐỦ: Hãy trích xuất MỌI dòng dữ liệu sản phẩm xuất hiện trong văn bản OCR bên dưới.
+2. KHÔNG ĐƯỢC GỘP DÒNG: Tuyệt đối không được gộp hoặc lọc bỏ các dòng có giá trị giống hệt nhau. Nếu trong văn bản có 3 dòng có số liệu y hệt nhau, bạn phải trả về đúng 3 dòng đó trong mảng JSON.
+3. BỎ QUA RÁC: Loại bỏ dòng tiêu đề và các dòng chỉ chứa số thứ tự cột (như 6, 7, 8).
+4. Định dạng trả về: JSON array: [{"qty": number, "price": number, "discount": number}]
+5. CHỈ trả về mã JSON, không giải thích gì thêm.
 
-  const parseTableWithGemini = async (imageFile) => {
-    if (GEMINI_API_KEYS.length === 0) {
-      alert('Chưa cấu hình API Key trong file .env!')
-      return []
-    }
+Văn bản OCR:
+${ocrText}`
+      );
 
-    // Convert image to base64
-    const reader = new FileReader()
-    const base64Promise = new Promise((resolve) => {
-      reader.onloadend = () => {
-        const base64 = reader.result.split(',')[1]
-        resolve(base64)
+      let responseText = "";
+      if (typeof puterFormat === 'string') responseText = puterFormat;
+      else if (puterFormat?.message?.content) responseText = puterFormat.message.content;
+      else if (puterFormat?.text) responseText = puterFormat.text;
+
+      if (responseText) {
+        console.log("Puter AI Response:", responseText);
+        return parseDataResponse(responseText);
       }
-      reader.readAsDataURL(imageFile)
-    })
-    const base64Image = await base64Promise
-
-    // Thử bắt đầu từ Key hiện tại đang lưu
-    let attemptCount = 0
-    let index = currentKeyIndex % GEMINI_API_KEYS.length
-
-    while (attemptCount < GEMINI_API_KEYS.length) {
-      const currentKey = GEMINI_API_KEYS[index]
-      console.log(`Đang thử API Key thứ ${index + 1}...`)
-
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${currentKey}`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              contents: [{
-                parts: [
-                  {
-                    text: `Phân tích bảng trong ảnh này:
-1. BỎ QUA dòng tiêu đề (header) có chữ "Số lượng", "Đơn giá", "Tổng tiền CK"
-2. CHỈ lấy các dòng dữ liệu sản phẩm (có STT 1, 2, 3, 4, 5...)
-3. Với mỗi dòng sản phẩm, trích xuất:
-   - qty: Giá trị ở cột "Số lượng" (cột 6)
-   - price: Giá trị ở cột "Đơn giá" (cột 7) 
-   - discount: Giá trị ở cột "Tổng tiền CK" (cột 8)
-
-Trả về JSON array format: [{"qty": number, "price": number, "discount": number}]
-
-CHỈ trả về JSON, KHÔNG giải thích gì thêm.`
-                  },
-                  {
-                    inline_data: {
-                      mime_type: imageFile.type,
-                      data: base64Image
-                    }
-                  }
-                ]
-              }]
-            })
-          }
-        )
-
-        const result = await response.json()
-
-        // Nếu gặp lỗi 429 (Hết hạn mức) hoặc lỗi API Key, chuyển sang Key tiếp theo
-        if (response.status === 429 || (result.error && (result.error.code === 429 || result.error.status === 'RESOURCE_EXHAUSTED'))) {
-          console.warn(`API Key thứ ${index + 1} hết hạn mức (429). Đang chuyển sang Key tiếp theo...`)
-          index = (index + 1) % GEMINI_API_KEYS.length
-          setCurrentKeyIndex(index) // Lưu lại vị trí Key mới
-          attemptCount++
-          continue 
-        }
-
-        if (result.error) {
-          console.error(`API Key thứ ${index + 1} gặp lỗi:`, result.error.message)
-          throw new Error(result.error.message)
-        }
-
-        if (result.candidates && result.candidates[0]) {
-          const text = result.candidates[0].content.parts[0].text
-          return parseGeminiResponse(text)
-        }
-        
-        break // Thành công thì thoát vòng lặp
-      } catch (error) {
-        console.error(`Lỗi tại Key thứ ${index + 1}:`, error)
-        // Nếu lỗi không phải do hạn mức thì cũng thử Key tiếp theo
-        index = (index + 1) % GEMINI_API_KEYS.length
-        setCurrentKeyIndex(index)
-        attemptCount++
-        if (attemptCount >= GEMINI_API_KEYS.length) throw error
-      }
+      
+      throw new Error('AI không trả về dữ liệu hợp lệ.');
+    } catch (error) {
+      console.error("Puter AI Error:", error);
+      throw error;
     }
-    return []
   }
 
-  const parseGeminiResponse = (text) => {
-    console.log("=== GEMINI TEXT ===")
+  const parseDataResponse = (text) => {
+    console.log("=== AI RAW RESPONSE ===")
     console.log(text)
-    console.log("===================")
+    console.log("========================")
     
     try {
       // Extract JSON from response
@@ -254,16 +187,39 @@ CHỈ trả về JSON, KHÔNG giải thích gì thêm.`
       if (jsonMatch) {
         const data = JSON.parse(jsonMatch[0])
         
-        return data.map((item) => {
-          const base = item.qty * item.price
-          const discountPercent = (item.discount / base) * 100
-          return {
-            qty: item.qty,
-            price: item.price,
-            discountAmount: item.discount,
-            discountPercent: Number(discountPercent.toFixed(2))
-          }
-        })
+        return data
+          .filter(item => {
+            // Loại bỏ các dòng là tiêu đề rác (như số cột 6, 7, 8)
+            const isHeaderJunk = (Number(item.qty) === 6 && Number(item.price) === 7 && Number(item.discount) === 8);
+            if (isHeaderJunk) return false;
+            
+            // Loại bỏ các dòng không có dữ liệu số hợp lệ
+            if (!item.qty || !item.price) return false;
+            
+            return true;
+          })
+          .map((item) => {
+            const cleanValue = (val) => {
+              if (typeof val === 'string') {
+                return Number(val.replace(/[^\d]/g, '')) || 0;
+              }
+              return Number(val) || 0;
+            };
+
+            const qty = cleanValue(item.qty);
+            const price = cleanValue(item.price);
+            const discount = cleanValue(item.discount);
+            
+            const base = qty * price
+            const discountPercent = base !== 0 ? (discount / base) * 100 : 0
+            
+            return {
+              qty: qty,
+              price: price,
+              discountAmount: discount,
+              discountPercent: Number(discountPercent.toFixed(2))
+            }
+          })
       }
     } catch (e) {
       console.error('Parse error:', e)
@@ -272,31 +228,39 @@ CHỈ trả về JSON, KHÔNG giải thích gì thêm.`
     return []
   }
 
-  const handleImageUpload = async (e) => {
+  const handleImageUpload = (e) => {
     const file = e.target.files[0]
     if (!file) return
 
-    setImage(URL.createObjectURL(file))
-    setLoading(true)
-    setResults([])
+    const startTime = performance.now();
+    if (image) URL.revokeObjectURL(image);
+    const previewUrl = URL.createObjectURL(file);
+    setImage(previewUrl);
+    setResults([]);
 
-    try {
-      const parsed = await parseTableWithGemini(file)
-      
-      if (parsed.length === 0) {
-        alert('Không đọc được dữ liệu.\n\nAPI key có thể chưa được kích hoạt.\nVui lòng:\n1. Vào https://aistudio.google.com/app/apikey\n2. Tạo API key mới\n3. Thay vào dòng 17 trong App.jsx\n\nHoặc dùng chế độ "Nhập thêm" để nhập thủ công!')
-      } else {
-        setResults(parsed)
+    // Sau đó mới bật loading và xử lý AI
+    setLoading(true);
+    setLoadingText('Đang khởi động AI...');
+
+    setTimeout(async () => {
+      try {
+        const parsed = await parseTableWithAI(file)
+        if (parsed.length === 0) {
+          alert('Không đọc được dữ liệu từ ảnh!')
+        } else {
+          setResults(parsed)
+        }
+      } catch (error) {
+        console.error('OCR Error:', error)
+        alert(`Lỗi: ${error.message}`)
+      } finally {
+        setLoading(false)
+        console.log(`[${new Date().toLocaleTimeString()}] >>> 4. HOÀN TẤT - Tổng cộng: ${(performance.now() - startTime).toFixed(2)}ms`);
       }
-    } catch (error) {
-      console.error('OCR Error:', error)
-      alert(`Lỗi: ${error.message}\n\nVui lòng kiểm tra:\n1. API key có đúng không?\n2. API key đã được kích hoạt chưa?\n3. Thử tạo key mới tại: https://aistudio.google.com/app/apikey`)
-    } finally {
-      setLoading(false)
-    }
+    }, 100);
   }
 
-  const handlePaste = async (e) => {
+  const handlePaste = (e) => {
     const items = e.clipboardData?.items
     if (!items) return
 
@@ -304,24 +268,34 @@ CHỈ trả về JSON, KHÔNG giải thích gì thêm.`
       if (item.type.indexOf('image') !== -1) {
         const file = item.getAsFile()
         if (file) {
-          setImage(URL.createObjectURL(file))
-          setLoading(true)
-          setResults([])
+          const startTime = performance.now();
+          console.log(`[${new Date().toLocaleTimeString()}] >>> 1. BẮT ĐẦU PASTE FILE`);
 
-          try {
-            const parsed = await parseTableWithGemini(file)
-            
-            if (parsed.length === 0) {
-              alert('Không đọc được dữ liệu từ ảnh!')
-            } else {
-              setResults(parsed)
+          if (image) URL.revokeObjectURL(image);
+          const previewUrl = URL.createObjectURL(file);
+          setImage(previewUrl);
+          setResults([]);
+          
+          console.log(`[${new Date().toLocaleTimeString()}] >>> 2. ĐÃ HIỂN THỊ ẢNH PASTE - Time: ${(performance.now() - startTime).toFixed(2)}ms`);
+
+          setLoading(true);
+          setLoadingText('Đang khởi động AI...');
+
+          setTimeout(async () => {
+            try {
+              const parsed = await parseTableWithAI(file)
+              if (parsed.length === 0) {
+                alert('Không đọc được dữ liệu từ ảnh!')
+              } else {
+                setResults(parsed)
+              }
+            } catch (error) {
+              console.error('OCR Error:', error)
+              alert(`Lỗi: ${error.message}`)
+            } finally {
+              setLoading(false)
             }
-          } catch (error) {
-            console.error('OCR Error:', error)
-            alert(`Lỗi: ${error.message}`)
-          } finally {
-            setLoading(false)
-          }
+          }, 100);
         }
         break
       }
@@ -859,7 +833,7 @@ CHỈ trả về JSON, KHÔNG giải thích gì thêm.`
             {loading ? (
               <div className="loading">
                 <div className="spinner"></div>
-                <p>Đang đọc ảnh với Google Gemini AI...</p>
+                <p className="loading-text">{loadingText}</p>
               </div>
             ) : !image ? (
               <div className="empty-state">
