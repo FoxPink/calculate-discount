@@ -696,6 +696,61 @@ h1 {
   transform: scale(1.1);
 }
 
+/* Footer Styles */
+.footer {
+  margin-top: 40px;
+  padding: 24px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  width: 100%;
+}
+
+.dark-mode .footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.footer-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.dark-mode .footer-content {
+  color: #aaa;
+}
+
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.footer-right a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footer-right a:hover {
+  color: #ffd700;
+}
+
+.separator {
+  opacity: 0.3;
+}
+
+@media (max-width: 768px) {
+  .footer-content {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+}
+
 .highlight-overlay {
   position: absolute;
   left: 0;

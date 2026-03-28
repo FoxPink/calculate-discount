@@ -1012,6 +1012,21 @@ ${ocrText}`
           )}
         </div>
       </div>
+      
+      <footer className="footer">
+        <div className="footer-content">
+          <div className="footer-left">
+            <p>© 2026 Calculate Discount. All rights reserved.</p>
+          </div>
+          <div className="footer-right">
+            <span>Built by Nguyễn Anh Duy</span>
+            <span className="separator">|</span>
+            <a href="https://github.com/FoxPink" target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
