@@ -287,6 +287,7 @@
 /* Guide Modal */
 .guide-section {
   margin-bottom: 24px;
+  text-align: left;
 }
 
 .guide-section h3 {
@@ -294,6 +295,7 @@
   font-size: 18px;
   margin-bottom: 12px;
   font-weight: 600;
+  text-align: left;
 }
 
 .dark-mode .guide-section h3 {

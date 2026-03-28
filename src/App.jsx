@@ -519,7 +519,8 @@ CHỈ trả về JSON, KHÔNG giải thích gì thêm.`
               <div className="guide-section">
                 <h3>1. Đọc ảnh hóa đơn</h3>
                 <p>• Click vào vùng ảnh bên trái hoặc nhấn Ctrl+V để paste ảnh</p>
-                <p>• AI sẽ tự động đọc các cột: Số lượng, Đơn giá, Tiền CK</p>
+                <p>• AI sẽ tự động đọc dữ liệu từ các cột <b>6, 7 và 8</b> của bảng (Số lượng, Đơn giá, Tiền CK)</p>
+                <p>• Đảm bảo ảnh chụp rõ nét, bao gồm cả tiêu đề cột và ít nhất một dòng dữ liệu</p>
                 <p>• Kết quả hiển thị bên phải với % chiết khấu đã tính</p>
               </div>
               <div className="guide-section">
