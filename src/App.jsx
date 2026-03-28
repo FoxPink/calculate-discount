@@ -145,14 +145,13 @@ function App() {
 
       // Bước 2: Định dạng bằng Puter Chat
       const puterFormat = await puter.ai.chat(
-        `Nhiệm vụ: Trích xuất TẤT CẢ các dòng dữ liệu từ văn bản OCR của bảng hóa đơn.
-Bảng có 3 cột chính: Số lượng, Đơn giá, Tổng tiền CK.
+        `Nhiệm vụ: Trích xuất chính xác dữ liệu từ bảng hóa đơn trong văn bản OCR.
 
 YÊU CẦU QUAN TRỌNG:
-1. TRÍCH XUẤT ĐẦY ĐỦ: Hãy trích xuất MỌI dòng dữ liệu sản phẩm xuất hiện trong văn bản OCR bên dưới.
-2. KHÔNG ĐƯỢC GỘP DÒNG: Tuyệt đối không được gộp hoặc lọc bỏ các dòng có giá trị giống hệt nhau. Nếu trong văn bản có 3 dòng có số liệu y hệt nhau, bạn phải trả về đúng 3 dòng đó trong mảng JSON.
-3. BỎ QUA RÁC: Loại bỏ dòng tiêu đề và các dòng chỉ chứa số thứ tự cột (như 6, 7, 8).
-4. Định dạng trả về: JSON array: [{"qty": number, "price": number, "discount": number}]
+1. TRÍCH XUẤT ĐẦY ĐỦ HÀNG: Hãy đếm và trích xuất đúng số lượng hàng thực tế xuất hiện trong bảng. Nếu bảng có nhiều hàng có giá trị giống hệt nhau, bạn phải liệt kê ĐỦ tất cả các hàng đó, không được gộp lại.
+2. CHỈ TRÍCH XUẤT 1 BẢNG: Văn bản OCR có thể bị lặp nội dung nhiều lần. Bạn hãy phân tích để chỉ lấy dữ liệu của MỘT khối bảng duy nhất, tránh việc nhân đôi số lượng hàng do lỗi quét.
+3. BỎ QUA RÁC: Loại bỏ dòng tiêu đề và các dòng chỉ chứa số thứ tự cột (6, 7, 8).
+4. Trả về JSON array: [{"qty": number, "price": number, "discount": number}]
 5. CHỈ trả về mã JSON, không giải thích gì thêm.
 
 Văn bản OCR:
